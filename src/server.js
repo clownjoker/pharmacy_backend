@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import productsRoutes from "./routes/products.js";
+import salesRoutes from "./routes/sales.js";
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/products", productsRoutes);
+app.use('/api/sales', salesRoutes);
 
 // 404
 app.use((req, res) => {
