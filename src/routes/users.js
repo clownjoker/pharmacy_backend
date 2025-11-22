@@ -1,194 +1,386 @@
-// src/routes/users.js
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const db = require('../db');
+import express from "express";
+import db from "../db.js";
+import bcrypt from "bcrypt";
 
 const router = express.Router();
 
-// 🧩 دالة تربط الصلاحيات مع المستخدمين
+/* ------------------------------------------------------
+   📌 مساعد: جلب صلاحيات المستخدمين بشكل صحيح
+------------------------------------------------------ */
 async function attachPermissionsToUsers(users) {
-  if (!users || !users.length) return users;
+  if (!users.length) return users;
 
-  const ids = users.map(u => u.id);
-  const placeholders = ids.map(() => '?').join(',');
+  const userIds = users.map(u => u.id);
+
   const [rows] = await db.query(
-    `SELECT user_id, permission_key 
-     FROM user_permissions 
-     WHERE user_id IN (${placeholders})`,
-    ids
+    `
+      SELECT 
+        up.user_id,
+        p.key AS permission_key
+      FROM user_permissions up
+      JOIN permissions p ON p.id = up.permission_id
+      WHERE up.user_id IN (?)
+    `,
+    [userIds]
   );
 
   const map = {};
-  rows.forEach(row => {
-    if (!map[row.user_id]) map[row.user_id] = [];
-    map[row.user_id].push(row.permission_key);
+  rows.forEach((r) => {
+    if (!map[r.user_id]) map[r.user_id] = [];
+    map[r.user_id].push(r.permission_key);
   });
 
   return users.map(u => ({
     ...u,
-    permissions: map[u.id] || [],
+    permissions: map[u.id] || []
   }));
 }
 
-// 🟢 جلب المستخدمين
-router.get('/', async (req, res) => {
+/* ------------------------------------------------------
+   📌 GET كل المستخدمين
+------------------------------------------------------ */
+router.get("/", async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT id, name, username, email, role, active, created_at FROM users ORDER BY id ASC'
-    );
+    const [users] = await db.query(`
+      SELECT id, name, username, email, role, active, created_at
+      FROM users
+      ORDER BY id ASC
+    `);
 
-    const usersWithPerms = await attachPermissionsToUsers(rows);
-    res.json(usersWithPerms);
+    const finalUsers = await attachPermissionsToUsers(users);
+
+    res.json(finalUsers);
+
   } catch (err) {
-    console.error('GET /users error:', err);
-    res.status(500).json({ message: 'خطأ في جلب المستخدمين' });
+    console.error("GET /users error:", err);
+    res.status(500).json({ message: "خطأ في جلب المستخدمين" });
   }
 });
 
-// ➕ إضافة مستخدم
-router.post('/', async (req, res) => {
+/* ------------------------------------------------------
+   📌 POST إضافة مستخدم
+------------------------------------------------------ */
+router.post("/", async (req, res) => {
   try {
-    const { name, username, email, password, role } = req.body;
+    const { name, username, email, password, role, active } = req.body;
 
-    if (!name || !username || !password) {
-      return res.status(400).json({ message: 'الحقول الأساسية مطلوبة' });
-    }
+    const hashed = await bcrypt.hash(password, 10);
 
-    const safeRole = ['admin', 'pharmacist', 'cashier'].includes(role)
-      ? role
-      : 'cashier';
-
-    // التأكد من عدم تكرار اسم المستخدم
-    const [existing] = await db.query(
-      'SELECT id FROM users WHERE username = ? LIMIT 1',
-      [username]
-    );
-    if (existing.length) {
-      return res
-        .status(409)
-        .json({ message: 'اسم المستخدم مستخدم مسبقًا' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    // ملاحظة: نخزن الباسورد المشفّر في عمود "password"
     const [result] = await db.query(
-      `INSERT INTO users (name, username, email, password_hash, role, active)
-       VALUES (?,?,?,?,?,1)`,
-      [name, username, email || null, passwordHash, safeRole]
+      `
+        INSERT INTO users (name, username, email, password_hash, role, active)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      [name, username, email, hashed, role, active ? 1 : 0]
     );
 
-    const [rows] = await db.query(
-      'SELECT id, name, username, email, role, active, created_at FROM users WHERE id = ?',
-      [result.insertId]
-    );
+    const user = {
+      id: result.insertId,
+      name,
+      username,
+      email,
+      role,
+      active,
+      permissions: [],
+    };
 
-    const [userWithPerms] = await attachPermissionsToUsers(rows);
-    res.status(201).json(userWithPerms);
+    res.json(user);
+
   } catch (err) {
-    console.error('POST /users error:', err);
-    res.status(500).json({ message: 'خطأ في إنشاء المستخدم' });
+    console.error("POST /users error:", err);
+    res.status(500).json({ message: "خطأ في إنشاء المستخدم" });
   }
 });
 
-// 🔄 تفعيل / تعطيل مستخدم
-router.patch('/:id/toggle', async (req, res) => {
+/* ------------------------------------------------------
+   📌 PATCH تفعيل / إيقاف مستخدم
+------------------------------------------------------ */
+router.patch("/:id/toggle", async (req, res) => {
   try {
-    const userId = parseInt(req.params.id, 10);
+    const userId = req.params.id;
 
-    const [rows] = await db.query(
-      'SELECT active FROM users WHERE id = ?',
+    const [[user]] = await db.query(
+      `SELECT active FROM users WHERE id=?`,
       [userId]
     );
-    if (!rows.length) {
-      return res.status(404).json({ message: 'المستخدم غير موجود' });
-    }
 
-    const current = rows[0].active ? 1 : 0;
-    const next = current ? 0 : 1;
+    const newState = user.active ? 0 : 1;
 
     await db.query(
-      'UPDATE users SET active = ? WHERE id = ?',
-      [next, userId]
+      `UPDATE users SET active=? WHERE id=?`,
+      [newState, userId]
     );
 
-    res.json({ id: userId, active: !!next });
+    res.json({ active: newState });
+
   } catch (err) {
-    console.error('PATCH /users/:id/toggle error:', err);
-    res.status(500).json({ message: 'خطأ في تحديث حالة المستخدم' });
+    console.error("PATCH /users/:id/toggle error:", err);
+    res.status(500).json({ message: "خطأ في تغيير الحالة" });
   }
 });
 
-// 🗑️ حذف مستخدم
-router.delete('/:id', async (req, res) => {
+/* ------------------------------------------------------
+   📌 DELETE حذف مستخدم
+------------------------------------------------------ */
+router.delete("/:id", async (req, res) => {
   try {
-    const userId = parseInt(req.params.id, 10);
+    await db.query(`DELETE FROM users WHERE id=?`, [req.params.id]);
+    res.json({ message: "تم حذف المستخدم" });
 
-    await db.query('DELETE FROM user_permissions WHERE user_id = ?', [userId]);
-    await db.query('DELETE FROM users WHERE id = ?', [userId]);
-
-    res.json({ message: 'تم حذف المستخدم' });
   } catch (err) {
-    console.error('DELETE /users/:id error:', err);
-    res.status(500).json({ message: 'خطأ في حذف المستخدم' });
+    console.error("DELETE /users/:id error:", err);
+    res.status(500).json({ message: "خطأ في الحذف" });
   }
 });
 
-// 📥 جلب صلاحيات مستخدم واحد (اختياري لو احتجته)
-router.get('/:id/permissions', async (req, res) => {
+/* ------------------------------------------------------
+   📌 PUT حفظ صلاحيات المستخدم
+------------------------------------------------------ */
+router.put("/:id/permissions", async (req, res) => {
   try {
-    const userId = parseInt(req.params.id, 10);
+    const userId = req.params.id;
+    const { permissions } = req.body;
 
-    const [rows] = await db.query(
-      'SELECT permission_key FROM user_permissions WHERE user_id = ?',
-      [userId]
-    );
+    // 🧹 حذف الصلاحيات القديمة
+    await db.query(`DELETE FROM user_permissions WHERE user_id=?`, [userId]);
 
-    const perms = rows.map(r => r.permission_key);
-    res.json({ userId, permissions: perms });
-  } catch (err) {
-    console.error('GET /users/:id/permissions error:', err);
-    res.status(500).json({ message: 'خطأ في جلب الصلاحيات' });
-  }
-});
-
-// 💾 حفظ الصلاحيات
-router.put('/:id/permissions', async (req, res) => {
-  const userId = Number(req.params.id);
-  const { permissions } = req.body;
-
-  if (!userId || Number.isNaN(userId)) {
-    return res.status(400).json({ message: 'معرّف المستخدم غير صالح' });
-  }
-
-  if (!Array.isArray(permissions)) {
-    return res.status(400).json({ message: 'تنسيق الصلاحيات غير صحيح' });
-  }
-
-  try {
-    // 1) نحذف الصلاحيات القديمة
-    await db.query('DELETE FROM user_permissions WHERE user_id = ?', [userId]);
-
-    // 2) نضيف الجديدة لو فيه أي صلاحيات
     if (permissions.length > 0) {
-      // نكوّن values بالشكل (?, ?), (?, ?), ...
-      const valuesPlaceholders = permissions.map(() => '(?, ?)').join(', ');
-      const flatValues = permissions.flatMap((p) => [userId, p]);
+      const [rows] = await db.query(`
+        SELECT id, \`key\` 
+        FROM permissions 
+        WHERE \`key\` IN (?)
+      `, [permissions]);
+
+      if (rows.length === 0) {
+        return res.status(400).json({ message: "صلاحيات غير صالحة" });
+      }
+
+      const values = rows.map((p) => [userId, p.id]);
 
       await db.query(
-        `INSERT INTO user_permissions (user_id, permission_key) VALUES ${valuesPlaceholders}`,
-        flatValues
+        `INSERT INTO user_permissions (user_id, permission_id)
+         VALUES ?`,
+        [values]
       );
+
     }
 
-    return res.json({ message: 'تم حفظ الصلاحيات بنجاح' });
+    res.json({ message: "تم حفظ الصلاحيات" });
+
   } catch (err) {
-    console.error('PUT /users/:id/permissions error:', err);
-    return res.status(500).json({ message: 'خطأ في حفظ الصلاحيات' });
+    console.error("PUT /users/:id/permissions error:", err);
+    res.status(500).json({ message: "خطأ في حفظ الصلاحيات" });
   }
 });
 
-module.exports = router;
+export default router;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// // src/routes/users.js
+// const express = require('express');
+// const bcrypt = require('bcryptjs');
+// const db = require('../db');
+
+// const router = express.Router();
+
+// // 🧩 دالة تربط الصلاحيات مع المستخدمين
+// async function attachPermissionsToUsers(users) {
+//   if (!users || !users.length) return users;
+
+//   const ids = users.map(u => u.id);
+//   const placeholders = ids.map(() => '?').join(',');
+//   const [rows] = await db.query(
+//     `SELECT user_id, permission_key 
+//      FROM user_permissions 
+//      WHERE user_id IN (${placeholders})`,
+//     ids
+//   );
+
+//   const map = {};
+//   rows.forEach(row => {
+//     if (!map[row.user_id]) map[row.user_id] = [];
+//     map[row.user_id].push(row.permission_key);
+//   });
+
+//   return users.map(u => ({
+//     ...u,
+//     permissions: map[u.id] || [],
+//   }));
+// }
+
+// // 🟢 جلب المستخدمين
+// router.get('/', async (req, res) => {
+//   try {
+//     const [rows] = await db.query(
+//       'SELECT id, name, username, email, role, active, created_at FROM users ORDER BY id ASC'
+//     );
+
+//     const usersWithPerms = await attachPermissionsToUsers(rows);
+//     res.json(usersWithPerms);
+//   } catch (err) {
+//     console.error('GET /users error:', err);
+//     res.status(500).json({ message: 'خطأ في جلب المستخدمين' });
+//   }
+// });
+
+// // ➕ إضافة مستخدم
+// router.post('/', async (req, res) => {
+//   try {
+//     const { name, username, email, password, role } = req.body;
+
+//     if (!name || !username || !password) {
+//       return res.status(400).json({ message: 'الحقول الأساسية مطلوبة' });
+//     }
+
+//     const safeRole = ['admin', 'pharmacist', 'cashier'].includes(role)
+//       ? role
+//       : 'cashier';
+
+//     // التأكد من عدم تكرار اسم المستخدم
+//     const [existing] = await db.query(
+//       'SELECT id FROM users WHERE username = ? LIMIT 1',
+//       [username]
+//     );
+//     if (existing.length) {
+//       return res
+//         .status(409)
+//         .json({ message: 'اسم المستخدم مستخدم مسبقًا' });
+//     }
+
+//     const passwordHash = await bcrypt.hash(password, 10);
+
+//     // ملاحظة: نخزن الباسورد المشفّر في عمود "password"
+//     const [result] = await db.query(
+//       `INSERT INTO users (name, username, email, password_hash, role, active)
+//        VALUES (?,?,?,?,?,1)`,
+//       [name, username, email || null, passwordHash, safeRole]
+//     );
+
+//     const [rows] = await db.query(
+//       'SELECT id, name, username, email, role, active, created_at FROM users WHERE id = ?',
+//       [result.insertId]
+//     );
+
+//     const [userWithPerms] = await attachPermissionsToUsers(rows);
+//     res.status(201).json(userWithPerms);
+//   } catch (err) {
+//     console.error('POST /users error:', err);
+//     res.status(500).json({ message: 'خطأ في إنشاء المستخدم' });
+//   }
+// });
+
+// // 🔄 تفعيل / تعطيل مستخدم
+// router.patch('/:id/toggle', async (req, res) => {
+//   try {
+//     const userId = parseInt(req.params.id, 10);
+
+//     const [rows] = await db.query(
+//       'SELECT active FROM users WHERE id = ?',
+//       [userId]
+//     );
+//     if (!rows.length) {
+//       return res.status(404).json({ message: 'المستخدم غير موجود' });
+//     }
+
+//     const current = rows[0].active ? 1 : 0;
+//     const next = current ? 0 : 1;
+
+//     await db.query(
+//       'UPDATE users SET active = ? WHERE id = ?',
+//       [next, userId]
+//     );
+
+//     res.json({ id: userId, active: !!next });
+//   } catch (err) {
+//     console.error('PATCH /users/:id/toggle error:', err);
+//     res.status(500).json({ message: 'خطأ في تحديث حالة المستخدم' });
+//   }
+// });
+
+// // 🗑️ حذف مستخدم
+// router.delete('/:id', async (req, res) => {
+//   try {
+//     const userId = parseInt(req.params.id, 10);
+
+//     await db.query('DELETE FROM user_permissions WHERE user_id = ?', [userId]);
+//     await db.query('DELETE FROM users WHERE id = ?', [userId]);
+
+//     res.json({ message: 'تم حذف المستخدم' });
+//   } catch (err) {
+//     console.error('DELETE /users/:id error:', err);
+//     res.status(500).json({ message: 'خطأ في حذف المستخدم' });
+//   }
+// });
+
+// // 📥 جلب صلاحيات مستخدم واحد (اختياري لو احتجته)
+// router.get('/:id/permissions', async (req, res) => {
+//   try {
+//     const userId = parseInt(req.params.id, 10);
+
+//     const [rows] = await db.query(
+//       'SELECT permission_key FROM user_permissions WHERE user_id = ?',
+//       [userId]
+//     );
+
+//     const perms = rows.map(r => r.permission_key);
+//     res.json({ userId, permissions: perms });
+//   } catch (err) {
+//     console.error('GET /users/:id/permissions error:', err);
+//     res.status(500).json({ message: 'خطأ في جلب الصلاحيات' });
+//   }
+// });
+
+// // 💾 حفظ الصلاحيات
+// router.put('/:id/permissions', async (req, res) => {
+//   const userId = Number(req.params.id);
+//   const { permissions } = req.body;
+
+//   if (!userId || Number.isNaN(userId)) {
+//     return res.status(400).json({ message: 'معرّف المستخدم غير صالح' });
+//   }
+
+//   if (!Array.isArray(permissions)) {
+//     return res.status(400).json({ message: 'تنسيق الصلاحيات غير صحيح' });
+//   }
+
+//   try {
+//     // 1) نحذف الصلاحيات القديمة
+//     await db.query('DELETE FROM user_permissions WHERE user_id = ?', [userId]);
+
+//     // 2) نضيف الجديدة لو فيه أي صلاحيات
+//     if (permissions.length > 0) {
+//       // نكوّن values بالشكل (?, ?), (?, ?), ...
+//       const valuesPlaceholders = permissions.map(() => '(?, ?)').join(', ');
+//       const flatValues = permissions.flatMap((p) => [userId, p]);
+
+//       await db.query(
+//         `INSERT INTO user_permissions (user_id, permission_key) VALUES ${valuesPlaceholders}`,
+//         flatValues
+//       );
+//     }
+
+//     return res.json({ message: 'تم حفظ الصلاحيات بنجاح' });
+//   } catch (err) {
+//     console.error('PUT /users/:id/permissions error:', err);
+//     return res.status(500).json({ message: 'خطأ في حفظ الصلاحيات' });
+//   }
+// });
+
+// module.exports = router;
 
 
 
