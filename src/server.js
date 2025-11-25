@@ -7,7 +7,7 @@ import userRoutes from "./routes/users.js";
 import productRoutes from "./routes/products.js";
 import salesRoutes from "./routes/sales.js";
 import transactionsRoutes from "./routes/transactions.js";
-// import shiftsRoutes from "./routes/shifts.js";
+import shiftsRoutes from "./routes/shifts.js";
 import reportsRoutes from "./routes/reports.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 
@@ -23,9 +23,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/sales", salesRoutes);
 app.use("/api/transactions", transactionsRoutes);
-// app.use("/api/shifts", shiftsRoutes);
+app.use("/api/shifts", shiftsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/inventory", inventoryRoutes);
+
 
 // 404
 app.use((req, res) => {
