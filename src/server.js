@@ -9,6 +9,7 @@ import salesRoutes from "./routes/sales.js";
 import transactionsRoutes from "./routes/transactions.js";
 // import shiftsRoutes from "./routes/shifts.js";
 import reportsRoutes from "./routes/reports.js";
+import inventoryRoutes from "./routes/inventory.routes.js";
 
 
 const app = express();
@@ -24,6 +25,7 @@ app.use("/api/sales", salesRoutes);
 app.use("/api/transactions", transactionsRoutes);
 // app.use("/api/shifts", shiftsRoutes);
 app.use("/api/reports", reportsRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 // 404
 app.use((req, res) => {
