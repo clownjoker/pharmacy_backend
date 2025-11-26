@@ -11,7 +11,7 @@ import shiftsRoutes from "./routes/shifts.js";
 import reportsRoutes from "./routes/reports.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import cashierRoutes from "./routes/cashier.routes.js";
-
+import pharmacistRoutes from "./routes/pharmacist.routes.js";
 
 
 const app = express();
@@ -29,6 +29,7 @@ app.use("/api/shifts", shiftsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/cashier", cashierRoutes);
+app.use('/api/pharmacist', pharmacistRoutes);
 
 
 
