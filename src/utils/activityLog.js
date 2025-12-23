@@ -1,35 +1,30 @@
-// src/utils/activityLog.js
-const { pool } = require('../db');
+import { pool } from "../config/db.js";
 
-async function logActivity({
-  userId = null,
+export async function logActivity({
+  userId,
   action,
-  entity = null,
-  entityId = null,
-  details = null,
-  ip = null,
-  agent = null,
+  entity,
+  entityId,
+  ip,
+  agent,
 }) {
   try {
     await pool.query(
       `
-      INSERT INTO activity_log
-        (user_id, action, entity, entity_id, details, ip_address, user_agent)
-      VALUES (?,?,?,?,?,?,?)
+      INSERT INTO activity_logs
+        (user_id, action, entity, entity_id, ip, agent)
+      VALUES (?, ?, ?, ?, ?, ?)
       `,
       [
-        userId,
+        userId || null,
         action,
         entity,
-        entityId,
-        details ? JSON.stringify(details) : null,
-        ip,
-        agent,
+        entityId || null,
+        ip || null,
+        agent || null,
       ]
     );
   } catch (err) {
-    console.error('logActivity error:', err.message);
+    console.error("logActivity error:", err.message);
   }
 }
-
-module.exports = { logActivity };

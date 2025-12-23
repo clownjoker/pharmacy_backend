@@ -1,47 +1,58 @@
-import express from "express";
-import cors from "cors";
-import bodyParser from "body-parser";
-
-import authRoutes from "./routes/auth.js";
-import userRoutes from "./routes/users.js";
-import productRoutes from "./routes/products.js";
-import salesRoutes from "./routes/sales.js";
-import transactionsRoutes from "./routes/transactions.js";
-import shiftsRoutes from "./routes/shifts.js";
-import reportsRoutes from "./routes/reports.js";
-import inventoryRoutes from "./routes/inventory.routes.js";
-import cashierRoutes from "./routes/cashier.routes.js";
-import pharmacistRoutes from "./routes/pharmacist.routes.js";
-
-
-const app = express();
-
-app.use(cors());
-app.use(bodyParser.json());
-
-// جميع المسارات داخل /api
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/sales", salesRoutes);
-app.use("/api/transactions", transactionsRoutes);
-app.use("/api/shifts", shiftsRoutes);
-app.use("/api/reports", reportsRoutes);
-app.use("/api/inventory", inventoryRoutes);
-app.use("/api/cashier", cashierRoutes);
-app.use('/api/pharmacist', pharmacistRoutes);
-
-
-
-// 404
-app.use((req, res) => {
-  res.status(404).json({ message: "المسار غير موجود" });
-});
+import app from "./app.js";
 
 const PORT = 5000;
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
+
+
+
+
+// import express from "express";
+// import cors from "cors";
+// import bodyParser from "body-parser";
+
+// import authRoutes from "./routes/auth.js";
+// import userRoutes from "./routes/users.js";
+// import productRoutes from "./routes/products.js";
+// import salesRoutes from "./routes/sales.js";
+// import transactionsRoutes from "./routes/transactions.js";
+// import shiftsRoutes from "./routes/shifts.js";
+// import reportsRoutes from "./routes/reports.js";
+// import inventoryRoutes from "./routes/inventory.routes.js";
+// import cashierRoutes from "./routes/cashier.routes.js";
+// import pharmacistRoutes from "./routes/pharmacist.routes.js";
+
+
+// const app = express();
+
+// app.use(cors());
+// app.use(bodyParser.json());
+
+// // جميع المسارات داخل /api
+// app.use("/api/auth", authRoutes);
+// app.use("/api/users", userRoutes);
+// app.use("/api/products", productRoutes);
+// app.use("/api/sales", salesRoutes);
+// app.use("/api/transactions", transactionsRoutes);
+// app.use("/api/shifts", shiftsRoutes);
+// app.use("/api/reports", reportsRoutes);
+// app.use("/api/inventory", inventoryRoutes);
+// app.use("/api/cashier", cashierRoutes);
+// app.use('/api/pharmacist', pharmacistRoutes);
+
+
+
+// // 404
+// app.use((req, res) => {
+//   res.status(404).json({ message: "المسار غير موجود" });
+// });
+
+// const PORT = 5000;
+// app.listen(PORT, () => {
+//   console.log(`Server running on port ${PORT}`);
+// });
 
 
 
